@@ -56,7 +56,7 @@ def initialize_velocities(n, width=0.2):
     """
     velocity = np.zeros((n, 2), dtype=np.float32)
     velocity += np.random.uniform(-.2, .2, size=(n, 2))
-    velocity -= np.mean(velocity)  # Subtract the mean (no bulk flow)
+    velocity -= np.mean(velocity, axis=0)  # Subtract the mean (no bulk flow)
     return velocity
 
 
