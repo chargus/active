@@ -1,2 +1,12 @@
 f
 *.pyc
+.ipynb_checkpoints/
+
+# Latex files:
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.pdf
+*.synctex.gz
+doc/ising_model/

@@ -1,0 +1,181 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Short Sectioned Assignment
+% LaTeX Template
+% Version 1.0 (5/5/12)
+%
+% This template has been downloaded from:
+% http://www.LaTeXTemplates.com
+%
+% Original author:
+% Frits Wenneker (http://www.howtotex.com)
+%
+% License:
+% CC BY-NC-SA 3.0 (http://creativecommons.org/licenses/by-nc-sa/3.0/)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%----------------------------------------------------------------------------------------
+%   PACKAGES AND OTHER DOCUMENT CONFIGURATIONS
+%----------------------------------------------------------------------------------------
+
+\documentclass[paper=a4, fontsize=11pt]{scrartcl} % A4 paper and 11pt font size
+
+% \usepackage[textwidth=6.5in,textheight=9.5in]{geometry}
+% \usepackage[showframe, headheight=0pt,headsep=0pt]{geometry}% http://ctan.org/pkg/geometry
+
+\usepackage[T1]{fontenc} % Use 8-bit encoding that has 256 glyphs
+\usepackage{fourier} % Use the Adobe Utopia font for the document - comment this line to return to the LaTeX default
+\usepackage[english]{babel} % English language/hyphenation
+\usepackage{amsmath,amsfonts,amsthm} % Math packages
+\usepackage{soul} % For ul command
+\usepackage[english]{babel}
+\usepackage{graphicx} % for images
+\usepackage{lipsum} % Used for inserting dummy 'Lorem ipsum' text into the template
+
+\usepackage{sectsty} % Allows customizing section commands
+\allsectionsfont{ \normalfont\scshape} % Make all sections centered, the default font and small caps
+\usepackage{cite}
+
+\usepackage{fancyhdr} % Custom headers and footers
+\usepackage{setspace}
+
+\pagestyle{fancyplain} % Makes all pages in the document conform to the custom headers and footers
+\fancyhead{} % No page header - if you want one, create it in the same way as the footers below
+\fancyfoot[L]{} % Empty left footer
+\fancyfoot[C]{} % Empty center footer
+\fancyfoot[R]{\thepage} % Page numbering for right footer
+\renewcommand{\headrulewidth}{0pt} % Remove header underlines
+\renewcommand{\footrulewidth}{0pt} % Remove footer underlines
+\renewcommand*{\sectionformat}{} % Suppress section numbers in headings (but keep implicit orderings, e.g. for figures).
+
+\setlength{\headheight}{13.6pt} % Customize the height of the header
+
+\numberwithin{equation}{section} % Number equations within sections (i.e. 1.1, 1.2, 2.1, 2.2 instead of 1, 2, 3, 4)
+\numberwithin{figure}{section} % Number figures within sections (i.e. 1.1, 1.2, 2.1, 2.2 instead of 1, 2, 3, 4)
+\numberwithin{table}{section} % Number tables within sections (i.e. 1.1, 1.2, 2.1, 2.2 instead of 1, 2, 3, 4)
+
+\setlength\parindent{0pt} % Removes all indentation from paragraphs - comment this line for an assignment with lots of text
+\setlength{\parskip}{2pt}%
+\setlength{\parindent}{0pt}%
+
+% Define some useful variables
+\newcommand{\LOne}{\mathcal{L}_1}
+\newcommand{\LTwo}{\mathcal{L}_2}
+
+
+%----------------------------------------------------------------------------------------
+%   TITLE SECTION
+%----------------------------------------------------------------------------------------
+
+\newcommand{\horrule}[1]{\rule{\linewidth}{#1}} % Create horizontal rule command with 1 argument of height
+
+\title{ \normalfont \normalsize \textsc{UC Berkeley, Department of Chemical
+and Biomolecular Engineering} \\ [25pt] % Your university, school and/or department name(s)
+\horrule{0.5pt} \\[0.4cm] % Thin top horizontal rule
+\Large A guided tour through molecular dynamics \\ %
+\horrule{2pt} \\[0.5cm] % Thick bottom horizontal rule
+}
+
+\author{Cory Hargus} % Your name
+
+\date{\normalsize\today} % Today's date or a custom date
+
+\begin{document}
+
+\maketitle % Print the title
+
+% \singlespace
+
+\section{Problem 1}
+
+% First Liouville operator:
+For compactness, the $3N$ dimensional vectors of positions, velocities, forces and momenta are denoted as $\mathbf{r}$, $\mathbf{v}$, $\mathbf{f}$ and $\mathbf{p}$, respectively, rather than indexing over the $N$ individual particles. From the Liouville equation together with Hamilton's equations of motion, we have:
+
+\begin{equation} \label{eq:L1}
+    i \LOne = \mathbf{v} \cdot \frac{\partial}{\partial \mathbf{r}}
+\end{equation}
+
+From Equation~\ref{eq:L1}, note that
+
+\begin{align} \label{eq:factorL1}
+\begin{split}
+    (i \LOne)^n g(\mathbf{r}, \mathbf{p}) &= (i \LOne)^{n-1} \mathbf{v} \cdot \frac{\partial g}{\partial \mathbf{r}} \\
+                                       &= (i \LOne)^{n-2} \mathbf{v} \cdot \frac{\partial}{\partial \mathbf{r}} \bigg( \mathbf{v} \cdot \frac{\partial g}{\partial \mathbf{r}}\bigg)\\
+                                       &= (i \LOne)^{n-2} \mathbf{v}^2 \cdot \frac{\partial^2 g}{\partial \mathbf{r}^2}\\
+                                       &= \mathbf{v}^n \cdot \frac{\partial^n g}{\partial \mathbf{r}^n}\\
+\end{split}
+\end{align}
+On the third line of Equation~\ref{eq:factorL1}, the linearity of Equation~\ref{eq:L1} has been used to simplify the expression. Applying this result to the expanded form of the exponentiated $\LOne$ operator yields
+
+\begin{align} \label{eq:expL1}
+\begin{split}
+        \exp{(i \LOne t)} g(\mathbf{r}, \mathbf{p}) &= \sum_{n=0}^{\infty}\frac{t^n}{n!} (i \LOne)^n g(\mathbf{r}, \mathbf{p}) \\
+                                                                            &= \sum_{n=0}^{\infty}\frac{t^n \mathbf{v}^n}{n!} \cdot \frac{\partial^n g}{\partial \mathbf{r}^n} \\
+                                                                            &= g(\mathbf{r} + \mathbf{v}t, \mathbf{p})
+\end{split}
+\end{align}
+
+where the final result has been obtained by identifying the second line of Equation~\ref{eq:expL1} as a Taylor series expansion of $g(\mathbf{r}, \mathbf{p})$ in $\mathbf{r}$ about $\mathbf{r'}$ evaluated at $\mathbf{r} = \mathbf{r'} + \mathbf{v} t$:
+
+\begin{equation}
+    g(\mathbf{r}, \mathbf{p}) = \sum_{n=0}^\infty \frac{1}{n!} \cdot \left. \frac{\partial^n g}{\partial \mathbf{r}^n} \right|_{\mathbf{r} = \mathbf{r'}} (\mathbf{r} - \mathbf{r'})^n
+\end{equation}
+
+\begin{equation}
+    g(\mathbf{r'} + \mathbf{v} t, \mathbf{p}) = \sum_{n=0}^{\infty}\frac{t^n \mathbf{v}^n}{n!} \cdot \frac{\partial^n g}{\partial \mathbf{r}^n}
+\end{equation}
+
+
+
+
+% Second Liouville operator:
+Similarly, for the second part of the Liouville operator, we have:
+
+\begin{equation} \label{eq:L2}
+    i \LTwo = \mathbf{f} \cdot \frac{\partial}{\partial \mathbf{p}}
+\end{equation}
+
+From Equation~\ref{eq:L2}, note that
+
+\begin{align} \label{eq:factorL2}
+\begin{split}
+    (i \LTwo)^n g(\mathbf{r}, \mathbf{p}) &= (i \LTwo)^{n-1} \mathbf{f} \cdot \frac{\partial g}{\partial \mathbf{p}} \\
+                                       &= (i \LTwo)^{n-2} \mathbf{f} \cdot \frac{\partial}{\partial \mathbf{p}} \bigg( \mathbf{f} \cdot \frac{\partial g}{\partial \mathbf{p}}\bigg)\\
+                                       &= (i \LTwo)^{n-2} \mathbf{f}^2 \cdot \frac{\partial^2 g}{\partial \mathbf{p}^2}\\
+                                       &= \mathbf{f}^n \cdot \frac{\partial^n g}{\partial \mathbf{p}^n}\\
+\end{split}
+\end{align}
+Using this result in an expanded form of the exponentiated $\LTwo$ operator yields
+
+\begin{align} \label{eq:expL2}
+\begin{split}
+        \exp{(i \LTwo t)} g(\mathbf{r}, \mathbf{p}) &= \sum_{n=0}^{\infty}\frac{t^n}{n!} (i \LTwo)^n g(\mathbf{r}, \mathbf{p}) \\
+                                                                            &= \sum_{n=0}^{\infty}\frac{t^n \mathbf{f}^n}{n!} \cdot \frac{\partial^n g}{\partial \mathbf{p}^n} \\
+                                                                            &= g(\mathbf{r}, \mathbf{p} + \mathbf{f}t)
+\end{split}
+\end{align}
+
+where, as before, the the second line of Equation~\ref{eq:expL2} has been recognized as a Taylor series expansion of $g(\mathbf{r}, \mathbf{p})$, this time in $\mathbf{p}$ about $\mathbf{p'}$ evaluated at $\mathbf{p} = \mathbf{p'} + \mathbf{f} t$.
+
+
+
+
+
+
+
+
+%%=====================================================================================
+
+\section{Problem 2}
+\begin{equation}
+    a = b
+\end{equation}
+
+
+
+% \singlespace
+\bibliographystyle{unsrt}
+% \bibliographystyle{jpclp}
+\bibliography{critique_refs}
+
+\end{document}
