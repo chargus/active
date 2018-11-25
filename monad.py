@@ -3,7 +3,7 @@ A python library of functions used to run molecular dynamics (MD) simulations.
 
 The difficult computations are done using Numpy for performance reasons. The
 name of this module (monad) is a reminder of its limitations -- this is
-an instructional library used for single-particle simulations with no
+an instructional library used for monatomic particle simulations with no
 long-range interactions.
 
 Reduced units are used throughout, where the width and depth of the Lennard-
@@ -122,26 +122,88 @@ def apply_pbc(pos, L):
     return ((pos + L / 2) % L) - L / 2
 
 
-# def minimum_image(dpos, L):
-#     """Redefine an array of position differences using minimum image.
-
-#     The minimum image convention replaces particle-particle distances (or,
-#     rather, their cartesian components) which are greater than L/2 by the
-#     same value
-#     """
-#     dpos[dpos > L/2] -= L
-#     dpos[dpos < -L/2] += L
-
-def get_velocity(pos_next, pos_prev, L):
+def get_velocity(pos_next, pos_prev, L, dt):
     dpos = apply_pbc(pos_next - pos_prev, L)
-    return dpos / 2.  # Implicit (reduced) dt in denominator
+    return dpos / (2. * dt)
 
 
-def get_kinetic_energy(pos_next, pos_prev, L):
-    return np.mean(get_velocity(pos_next, pos_prev, L)**2, axis=0)
+def get_kinetic_energy_from_pos(pos_next, pos_prev, L, dt):
+    return np.mean(get_velocity(pos_next, pos_prev, L, dt)**2, axis=0)
 
 
-def run(init_pos, init_vel, L, nframes, dtlog, rcut=None,
+def get_kinetic_energy(vel):
+    return np.mean(vel**2, axis=0)
+
+
+def verlet_timestep(pos, pos_prev, dt, net_fx, net_fy, L,
+                    sigma, epsilon):
+    pos_next = np.empty_like(pos)
+    dpos = pos - pos_prev
+    pos_next[:, 0] = apply_pbc(pos[:, 0] + dpos[:, 0] + net_fx * dt**2, L)
+    pos_next[:, 1] = apply_pbc(pos[:, 1] + dpos[:, 1] + net_fy * dt**2, L)
+    pos_prev[:] = pos
+    pos[:] = pos_next
+
+
+def velocity_verlet_timestep(pos, vel, dt, forces, L, sigma, epsilon, rcut):
+    """Advance positions and velocities one timestep using Velocity Verlet
+
+    Velocity Verlet is similar to the basic Verlet algorithm, but explicitly
+    tracks velocities as dynamics are advanced. Velocities (i.e. momenta) and
+    positions are updated together in a "half-kick, drift, half-kick" scheme
+    derived from Trotter factorization of the Liouville operator.
+
+    """
+    vel = vel + 0.5 * dt * forces
+    pos = apply_pbc(pos + dt * vel, L)
+    forces = get_forces(pos, L, sigma, epsilon, rcut)
+    vel = vel + 0.5 * dt * forces
+
+    return pos, vel
+
+
+def get_forces(pos, L, sigma, epsilon, rcut):
+    """Compute Lennard-Jones force on each particle.
+
+
+    Parameters
+    ----------
+    pos : 2D numpy array [N x 3]
+        Numpy array of particle positions.
+
+    Returns
+    -------
+    forces: 2D numpy array [N x 3]
+        Numpy array of net force vector acting on each particle.
+
+    """
+    # Determine particles within cutoff radius
+    dx = np.subtract.outer(pos[:, 0], pos[:, 0])
+    dy = np.subtract.outer(pos[:, 1], pos[:, 1])
+
+    # Apply "minimum image" convention: interact with nearest periodic image
+    dx = apply_pbc(dx, L)
+    dy = apply_pbc(dy, L)
+
+    r2 = dx**2 + dy**2  # Squared distance between all pairs of particles
+
+    # Select interaction pairs within cutoff distance
+    # (also ignore self-interactions)
+    mask = r2 < rcut**2
+    mask *= r2 > 0
+
+    # Compute forces
+    fx = np.zeros_like(dx)
+    fx[mask] = dx[mask] * lj_force(r2[mask], sigma, epsilon)
+    fy = np.zeros_like(dy)
+    fy[mask] = dy[mask] * lj_force(r2[mask], sigma, epsilon)
+    net_fx = np.sum(fx, axis=0)
+    net_fy = np.sum(fy, axis=0)
+    forces = np.stack([net_fx, net_fy], axis=1)
+    return forces
+
+
+def run(init_pos, init_vel, L, nframes, dt=0.005, nlog=10, rcut=None,
         sigma=1., epsilon=1., verbose=False):
     """Run a dynamics simulation.
 
@@ -155,8 +217,10 @@ def run(init_pos, init_vel, L, nframes, dtlog, rcut=None,
         Length of one side of the simulation box.
     nframes : int
         Number of frames to run simulation for
-    dtlog : int
-        Log positions and kinetic energy to trajectories every `dtlog` frames.
+    dt : float
+        Time step between frames in reduced units.
+    nlog : int
+        Log positions and kinetic energy to trajectories every `nlog` frames.
     rcut : float
         Cutoff radius beyond which interactions are not considered. Must be
         less than or equal to L/2.
@@ -168,52 +232,22 @@ def run(init_pos, init_vel, L, nframes, dtlog, rcut=None,
         rcut = L / 2.
 
     # Initialize arrays:
-    pos_prev = init_pos - init_vel  # Bootstrap position for previous timestep
     pos = init_pos
-    pos_next = np.empty_like(pos)
-    traj = np.empty((nframes / dtlog, pos.shape[0], pos.shape[1]))
-    vetraj = np.empty((nframes / dtlog))
-    ketraj = np.empty((nframes / dtlog, pos.shape[1]))
+    vel = init_vel
+    ptraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
+    vtraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
+    # vetraj = np.empty((nframes / nlog))
+    # ketraj = np.empty((nframes / nlog, pos.shape[1]))
 
     # Begin iterating dynamics calculations:
     for i in range(nframes):
-        # Determine particles within cutoff radius
-        dx = np.subtract.outer(pos[:, 0], pos[:, 0])
-        dy = np.subtract.outer(pos[:, 1], pos[:, 1])
+        forces = get_forces(pos, L, sigma, epsilon, rcut)
+        pos[:], vel[:] = velocity_verlet_timestep(pos, vel, dt, forces, L,
+                                                  sigma, epsilon, rcut)
+        if i % nlog == 0:
+            ptraj[i / nlog] = pos
+            vtraj[i / nlog] = vel
+            # if verbose:
+            #     print pos[0, 0], pos_prev[0, 0], pos[0, 0] - pos_prev[0, 0]
 
-        # "Minimum image" convention: interact with nearest periodic image
-        dx[dx > L / 2] -= L
-        dx[dx < -L / 2] += L
-        dy[dy > L / 2] -= L
-        dy[dy < -L / 2] += L
-        # dx = apply_pbc(dx, L)
-        # dy = apply_pbc(dx, L)
-
-        r2 = dx**2 + dy**2  # Squared distance between all pairs of particles
-
-        # Select interaction pairs within cutoff distance
-        # (also ignore self-interactions)
-        mask = r2 < rcut**2
-        mask *= r2 > 0
-
-        # Compute forces
-        fx = np.zeros_like(dx)
-        fx[mask] = dx[mask] * lj_force(r2[mask], sigma, epsilon)
-        fy = np.zeros_like(dy)
-        fy[mask] = dy[mask] * lj_force(r2[mask], sigma, epsilon)
-        net_fx = np.sum(fx, axis=0)
-        net_fy = np.sum(fy, axis=0)
-
-        # Apply Verlet integration: note implicit division of force by m * dt^2
-        dpos = pos - pos_prev
-        pos_next[:, 0] = apply_pbc(pos[:, 0] + dpos[:, 0] + net_fx, L)
-        pos_next[:, 1] = apply_pbc(pos[:, 1] + dpos[:, 1] + net_fy, L)
-        if i % dtlog == 0:
-            traj[i / dtlog] = pos
-            vetraj[i / dtlog] = np.sum(lj_potential(r2[mask], sigma, epsilon))
-            ketraj[i / dtlog] = get_kinetic_energy(pos_next, pos_prev, L)
-            if verbose:
-                print pos[0, 0], pos_prev[0, 0], pos[0, 0] - pos_prev[0, 0]
-        pos_prev[:] = pos
-        pos[:] = pos_next
-    return traj, vetraj, ketraj
+    return ptraj, vtraj

@@ -5,7 +5,7 @@ import math
 # Initial parameters
 n_particle = 256 # number of particle
 temp = 1.0 # temperature in reduced units
-box = 5.3
+box = 5.3  # Edit: are these all correct reduced units? Or overspecified?
 epsilon = 1.0 # LJ epsilon
 sigma = 1.0 # LJ sigma
 dt = 0.005 # time step for integration
