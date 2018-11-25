@@ -78,8 +78,8 @@ def lj_potential(r2, sigma, epsilon):
     return energy
 
 
-def lj_force(r2, sigma, epsilon):
-    """Compute the Lennard-Jones force.
+def lj(r2, sigma, epsilon):
+    """Compute the Lennard-Jones force and potential energy.
 
     Returned value is normalized by r, such that it can be multiplied by the
     x, y or z component of r to obtain the correct cartesian component of the
@@ -96,9 +96,11 @@ def lj_force(r2, sigma, epsilon):
         separation.
 
     """
-    force = (48 / r2) * epsilon * \
-        ((sigma**2 / r2)**6 - .5 * (sigma**2 / r2)**3)
-    return force
+    r12 = (sigma**2 / r2)**6
+    r6 = (sigma**2 / r2)**3
+    lj_force = (48 / r2) * epsilon * (r12 - .5 * r6)
+    lj_energy = 4 * epsilon * (r12 - r6)
+    return lj_force, lj_energy
 
 
 def apply_pbc(pos, L):
@@ -145,7 +147,8 @@ def verlet_timestep(pos, pos_prev, dt, net_fx, net_fy, L,
     pos[:] = pos_next
 
 
-def velocity_verlet_timestep(pos, vel, dt, forces, L, sigma, epsilon, rcut):
+def velocity_verlet_timestep(pos, vel, dt, old_forces, L,
+                             sigma, epsilon, rcut):
     """Advance positions and velocities one timestep using Velocity Verlet
 
     Velocity Verlet is similar to the basic Verlet algorithm, but explicitly
@@ -154,12 +157,12 @@ def velocity_verlet_timestep(pos, vel, dt, forces, L, sigma, epsilon, rcut):
     derived from Trotter factorization of the Liouville operator.
 
     """
-    vel = vel + 0.5 * dt * forces
+    vel = vel + 0.5 * dt * old_forces
     pos = apply_pbc(pos + dt * vel, L)
-    forces = get_forces(pos, L, sigma, epsilon, rcut)
-    vel = vel + 0.5 * dt * forces
+    new_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
+    vel = vel + 0.5 * dt * new_forces
 
-    return pos, vel
+    return pos, vel, new_forces, energy
 
 
 def get_forces(pos, L, sigma, epsilon, rcut):
@@ -194,13 +197,15 @@ def get_forces(pos, L, sigma, epsilon, rcut):
 
     # Compute forces
     fx = np.zeros_like(dx)
-    fx[mask] = dx[mask] * lj_force(r2[mask], sigma, epsilon)
+    lj_force, lj_energy = lj(r2[mask], sigma, epsilon)
+    fx[mask] = dx[mask] * lj_force
     fy = np.zeros_like(dy)
-    fy[mask] = dy[mask] * lj_force(r2[mask], sigma, epsilon)
+    fy[mask] = dy[mask] * lj_force
     net_fx = np.sum(fx, axis=0)
     net_fy = np.sum(fy, axis=0)
     forces = np.stack([net_fx, net_fy], axis=1)
-    return forces
+    energy = np.sum(lj_energy)
+    return forces, energy
 
 
 def run(init_pos, init_vel, L, nframes, dt=0.005, nlog=10, rcut=None,
@@ -234,20 +239,20 @@ def run(init_pos, init_vel, L, nframes, dt=0.005, nlog=10, rcut=None,
     # Initialize arrays:
     pos = init_pos
     vel = init_vel
+    forces, _ = get_forces(pos, L, sigma, epsilon, rcut)
     ptraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
     vtraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
-    # vetraj = np.empty((nframes / nlog))
-    # ketraj = np.empty((nframes / nlog, pos.shape[1]))
+    etraj = np.empty(nframes / nlog)
 
     # Begin iterating dynamics calculations:
     for i in range(nframes):
-        forces = get_forces(pos, L, sigma, epsilon, rcut)
-        pos[:], vel[:] = velocity_verlet_timestep(pos, vel, dt, forces, L,
-                                                  sigma, epsilon, rcut)
+        pos[:], vel[:], forces[:], energy = velocity_verlet_timestep(
+            pos, vel, dt, forces, L, sigma, epsilon, rcut)
         if i % nlog == 0:
             ptraj[i / nlog] = pos
             vtraj[i / nlog] = vel
+            etraj[i / nlog] = energy
             # if verbose:
             #     print pos[0, 0], pos_prev[0, 0], pos[0, 0] - pos_prev[0, 0]
 
-    return ptraj, vtraj
+    return ptraj, vtraj, etraj
