@@ -157,10 +157,23 @@ def velocity_verlet_timestep(pos, vel, dt, old_forces, L,
     derived from Trotter factorization of the Liouville operator.
 
     """
+    # old_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
     vel = vel + 0.5 * dt * old_forces
     pos = apply_pbc(pos + dt * vel, L)
     new_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
     vel = vel + 0.5 * dt * new_forces
+
+    return pos, vel, new_forces, energy
+
+
+def velocity_verlet_timestep2(pos, vel, dt, old_forces, L,
+                              sigma, epsilon, rcut):
+    """Second implementation of velocity verlet.
+    """
+    old_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
+    pos = apply_pbc(pos + dt * vel + .5 * old_forces * dt**2, L)
+    new_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
+    vel = vel + 0.5 * dt * (old_forces + new_forces)
 
     return pos, vel, new_forces, energy
 
@@ -185,8 +198,8 @@ def get_forces(pos, L, sigma, epsilon, rcut):
     dy = np.subtract.outer(pos[:, 1], pos[:, 1])
 
     # Apply "minimum image" convention: interact with nearest periodic image
-    dx = apply_pbc(dx, L)
-    dy = apply_pbc(dy, L)
+    dx = apply_pbc(dx, L)  # x component of i-j vector
+    dy = apply_pbc(dy, L)  # y component of i-j vector
 
     r2 = dx**2 + dy**2  # Squared distance between all pairs of particles
 
@@ -198,9 +211,9 @@ def get_forces(pos, L, sigma, epsilon, rcut):
     # Compute forces
     fx = np.zeros_like(dx)
     lj_force, lj_energy = lj(r2[mask], sigma, epsilon)
-    fx[mask] = dx[mask] * lj_force
+    fx[mask] = -dx[mask] * lj_force  # Negative sign so dx points from j to i
     fy = np.zeros_like(dy)
-    fy[mask] = dy[mask] * lj_force
+    fy[mask] = -dy[mask] * lj_force  # Negative sign so dy points from j to i
     net_fx = np.sum(fx, axis=0)
     net_fy = np.sum(fy, axis=0)
     forces = np.stack([net_fx, net_fy], axis=1)
@@ -246,7 +259,7 @@ def run(init_pos, init_vel, L, nframes, dt=0.005, nlog=10, rcut=None,
 
     # Begin iterating dynamics calculations:
     for i in range(nframes):
-        pos[:], vel[:], forces[:], energy = velocity_verlet_timestep(
+        pos[:], vel[:], forces[:], energy = velocity_verlet_timestep2(
             pos, vel, dt, forces, L, sigma, epsilon, rcut)
         if i % nlog == 0:
             ptraj[i / nlog] = pos
