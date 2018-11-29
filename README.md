@@ -1,2 +1,2 @@
 # active
-Dynamical simulations of active matter
+Dynamical simulations of active matter.
