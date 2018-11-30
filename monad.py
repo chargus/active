@@ -30,13 +30,15 @@ def initialize_positions(n, L):
     L : float
         Length of one side of the simulation box.
     """
-    pos = np.zeros((n, 2), dtype=np.float32)
+    pos = np.zeros((n, 3), dtype=np.float64)
     nside = int(np.sqrt(n))  # For now, just assume sqrt(n) is integer
     lside = (4. / 5.) * L  # Shrink lattice to avoid overlap of periodic images
     x = np.linspace(-lside / 2, lside / 2, nside)
     y = np.linspace(-lside / 2, lside / 2, nside)
-    X, Y = np.meshgrid(x, y)
-    pos_init = np.array([X.flatten(), Y.flatten()]).T
+    z = np.linspace(-lside / 2, lside / 2, nside)
+
+    X, Y, Z = np.meshgrid(x, y, z)
+    pos_init = np.array([X.flatten(), Y.flatten(), Z.flatten()]).T
     pos += pos_init
     pos += np.random.uniform(0, .03 * L, pos.shape)  # Rattle to break symmetry
     return pos
@@ -54,8 +56,8 @@ def initialize_velocities(n, width=0.2):
         velocities.
 
     """
-    velocity = np.zeros((n, 2), dtype=np.float32)
-    velocity += np.random.uniform(-.2, .2, size=(n, 2))
+    velocity = np.zeros((n, 3), dtype=np.float64)
+    velocity += np.random.uniform(-.2, .2, size=(n, 3))
     velocity -= np.mean(velocity, axis=0)  # Subtract the mean (no bulk flow)
     return velocity
 
@@ -137,12 +139,13 @@ def get_kinetic_energy(vel):
     return np.mean(vel**2, axis=0)
 
 
-def verlet_timestep(pos, pos_prev, dt, net_fx, net_fy, L,
+def verlet_timestep(pos, pos_prev, dt, net_fx, net_fy, net_fz, L,
                     sigma, epsilon):
     pos_next = np.empty_like(pos)
     dpos = pos - pos_prev
     pos_next[:, 0] = apply_pbc(pos[:, 0] + dpos[:, 0] + net_fx * dt**2, L)
     pos_next[:, 1] = apply_pbc(pos[:, 1] + dpos[:, 1] + net_fy * dt**2, L)
+    pos_next[:, 2] = apply_pbc(pos[:, 2] + dpos[:, 2] + net_fz * dt**2, L)
     pos_prev[:] = pos
     pos[:] = pos_next
 
@@ -196,12 +199,14 @@ def get_forces(pos, L, sigma, epsilon, rcut):
     # Determine particles within cutoff radius
     dx = np.subtract.outer(pos[:, 0], pos[:, 0])
     dy = np.subtract.outer(pos[:, 1], pos[:, 1])
+    dz = np.subtract.outer(pos[:, 2], pos[:, 2])
 
     # Apply "minimum image" convention: interact with nearest periodic image
     dx = apply_pbc(dx, L)  # x component of i-j vector
     dy = apply_pbc(dy, L)  # y component of i-j vector
+    dz = apply_pbc(dz, L)  # y component of i-j vector
 
-    r2 = dx**2 + dy**2  # Squared distance between all pairs of particles
+    r2 = dx**2 + dy**2 + dz**2  # Squared distance between all particle pairs
 
     # Select interaction pairs within cutoff distance
     # (also ignore self-interactions)
@@ -209,14 +214,17 @@ def get_forces(pos, L, sigma, epsilon, rcut):
     mask *= r2 > 0
 
     # Compute forces
-    fx = np.zeros_like(dx)
     lj_force, lj_energy = lj(r2[mask], sigma, epsilon)
+    fx = np.zeros_like(dx)
     fx[mask] = -dx[mask] * lj_force  # Negative sign so dx points from j to i
     fy = np.zeros_like(dy)
     fy[mask] = -dy[mask] * lj_force  # Negative sign so dy points from j to i
+    fz = np.zeros_like(dz)
+    fz[mask] = -dz[mask] * lj_force  # Negative sign so dz points from j to i
     net_fx = np.sum(fx, axis=0)
     net_fy = np.sum(fy, axis=0)
-    forces = np.stack([net_fx, net_fy], axis=1)
+    net_fz = np.sum(fz, axis=0)
+    forces = np.stack([net_fx, net_fy, net_fz], axis=1)
     energy = np.sum(lj_energy)
     return forces, energy
 
@@ -252,20 +260,18 @@ def run(init_pos, init_vel, L, nframes, dt=0.005, nlog=10, rcut=None,
     # Initialize arrays:
     pos = init_pos
     vel = init_vel
-    forces, _ = get_forces(pos, L, sigma, epsilon, rcut)
+    forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
     ptraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
     vtraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
     etraj = np.empty(nframes / nlog)
 
     # Begin iterating dynamics calculations:
     for i in range(nframes):
-        pos[:], vel[:], forces[:], energy = velocity_verlet_timestep2(
-            pos, vel, dt, forces, L, sigma, epsilon, rcut)
         if i % nlog == 0:
             ptraj[i / nlog] = pos
             vtraj[i / nlog] = vel
             etraj[i / nlog] = energy
-            # if verbose:
-            #     print pos[0, 0], pos_prev[0, 0], pos[0, 0] - pos_prev[0, 0]
+        pos[:], vel[:], forces[:], energy = velocity_verlet_timestep2(
+            pos, vel, dt, forces, L, sigma, epsilon, rcut)
 
     return ptraj, vtraj, etraj
