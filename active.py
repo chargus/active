@@ -3,23 +3,37 @@ A library of functions used to run Langevin dynamics for the Vicsek model.
 
 """
 
-import numpy as np
 import monad
+import numpy as np
+np.random.seed(0)
 
 
-def initialize(n, L=1.):
+def initialize(n, rho):
     """Set up initial positions and angles in the simulation box.
 
     Parameters
     ----------
     n : int
         Number of particles in the simulation
-    L : float
-        Length of one side of the simulation box.
+    rho : float
+        Density
     """
-    pos = np.random.uniform(0, 1, size=(n, 2))
+    L = np.sqrt(n / rho)
+    pos = np.random.uniform(0, L, size=(n, 2))
     thetas = np.random.uniform(-np.pi, np.pi, size=n)
-    return pos, thetas
+    return pos, thetas, L
+
+
+def va(thetas):
+    xs = np.cos(thetas)
+    ys = np.sin(thetas)
+    return np.sqrt(np.mean(xs) + np.mean(ys))
+
+
+def va_traj(ttraj):
+    xs = np.cos(ttraj)
+    ys = np.sin(ttraj)
+    return np.sqrt(np.mean(xs, axis=1)**2 + np.mean(ys, axis=1)**2)
 
 
 def avg_theta(thetas):
@@ -29,7 +43,7 @@ def avg_theta(thetas):
     does not correclty account for the discontinuity from theta = -pi to pi.
 
     """
-    return np.arctan(np.mean(np.sin(thetas)) / np.mean(np.cos(thetas)))
+    return np.arctan2(np.mean(np.sin(thetas)), np.mean(np.cos(thetas)))
 
 
 def get_neighbors(pos, rcut, L=1.0):
@@ -47,7 +61,7 @@ def get_neighbors(pos, rcut, L=1.0):
 
     # Select interaction pairs within cutoff distance
     # (also ignore self-interactions)
-    mask = r2 < rcut**2  # Note: include self in alignment average?
+    mask = r2 < rcut**2  # Note: include self in alignment average.
     return mask
 
 
@@ -61,7 +75,7 @@ def align(pos, thetas, eta, rcut, L=1.0):
         neighbors_thetas = thetas[mask[i]]
         avg = avg_theta(neighbors_thetas)
         thetas_new[i] = avg
-    thetas_new += np.random.uniform(-np.pi, np.pi, len(thetas)) * eta
+    thetas_new += np.random.uniform(-eta / 2., eta / 2., len(thetas))
     return thetas_new
 
 
@@ -79,25 +93,26 @@ def timestep(pos, thetas, rcut, eta, vel, L):
     return pos, thetas
 
 
-def run(init_pos, init_thetas, eta, vel, L, nframes, nlog=10, rcut=None):
+def run(n, rho, eta, vel, rcut=None, nframes=100, nlog=10):
     """Run a dynamics simulation.
 
     Parameters
     ----------
-    init_pos : 2D numpy array [N x 3]
-        Array of initial positions from which to start simulation.
-    init_thetas : 2D numpy array [N x 3]
-        Array of initial velocities with which to start simulation.
-    L : float
-        Length of one side of the simulation box.
-    nframes : int
-        Number of frames to run simulation for
-    nlog : int
-        Log positions and kinetic energy to trajectories every `nlog` frames.
+    n : int
+        Number of particles.
+    rho : float
+        Density (n / L**2).
+    eta : float
+        Specifies range for angular noise: dtheta ~ [-eta/2, eta/2]
     rcut : float
         Cutoff radius beyond which interactions are not considered. Must be
         less than or equal to L/2.
+    nframes : int
+        Number of frames for which to run simulation.
+    nlog : int
+        Log positions and kinetic energy to trajectories every `nlog` frames.
     """
+    pos, thetas, L = initialize(n, rho)
     if rcut > L / 2:
         raise ValueError("rcut must be less than or equal to L/2 to satisfy"
                          "the minimum image convention.")
@@ -105,8 +120,6 @@ def run(init_pos, init_thetas, eta, vel, L, nframes, nlog=10, rcut=None):
         rcut = L / 2.
 
     # Initialize arrays:
-    pos = init_pos
-    thetas = init_thetas
     ptraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
     ttraj = np.empty((nframes / nlog, pos.shape[0]))
 
