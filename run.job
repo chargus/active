@@ -1,0 +1,11 @@
+#!/bin/bash
+#$ -S /bin/sh
+#$ -M hargus@berkeley.edu
+#$ -m be
+#$ -e log
+#$ -o log
+#$ -r y
+echo "Start - `date`"
+echo "variables $@""
+python run.py $@
+echo "Finish - `date`"
