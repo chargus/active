@@ -6,6 +6,6 @@
 #$ -o log
 #$ -r y
 echo "Start - `date`"
-echo "variables $@""
+echo "variables $@"
 python run.py $@
 echo "Finish - `date`"
