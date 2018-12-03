@@ -16,7 +16,7 @@ def main(args):
     rho = 4.0
     vel = 0.1
     rcut = 1.
-    nlog = 10
+    nlog = 1
     ptraj, ttraj = active.run(n, rho, eta, vel, rcut, nframes, nlog)
     np.save(args.path + '_ptraj', ptraj)
     np.save(args.path + '_ttraj', ttraj)

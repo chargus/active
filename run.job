@@ -1,6 +1,5 @@
 #!/bin/bash
 #$ -S /bin/sh
-#$ -M hargus@berkeley.edu
 #$ -m be
 #$ -e log
 #$ -o log
