@@ -105,8 +105,9 @@ def run(n, rho, eta, vel, rcut=None, nframes=100, nlog=10):
     eta : float
         Specifies range for angular noise: dtheta ~ [-eta/2, eta/2]
     rcut : float
-        Cutoff radius beyond which interactions are not considered. Must be
-        less than or equal to L/2.
+        Factor for cutoff radius beyond which interactions are not considered.
+        This is a factor of L, e.g. 0.5 gives half of L as the the cutoff.
+        If None, value of 0.5 is used
     nframes : int
         Number of frames for which to run simulation.
     nlog : int
@@ -117,7 +118,8 @@ def run(n, rho, eta, vel, rcut=None, nframes=100, nlog=10):
         raise ValueError("rcut must be less than or equal to L/2 to satisfy"
                          "the minimum image convention.")
     if rcut is None:
-        rcut = L / 2.
+        rcut = 0.5 * L
+    rcut = rcut * L
 
     # Initialize arrays:
     ptraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
