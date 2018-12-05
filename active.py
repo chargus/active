@@ -85,7 +85,7 @@ def get_neighbors(pos, rcut, L=1.0):
     return mask
 
 
-def align(pos, thetas, eta, rcut, L=1.0):
+def align(pos, thetas, eta, rcut, L=1.0, mod=False):
     """Align all particles to the velocity vector of their neighbors.
     """
     mask = get_neighbors(pos, rcut, L)
@@ -95,11 +95,15 @@ def align(pos, thetas, eta, rcut, L=1.0):
         neighbors_thetas = thetas[mask[i]]
         avg = avg_theta(neighbors_thetas)
         thetas_new[i] = avg
+    if mod:
+        rho_global = len(mask) / L**2
+        rho_local = sum(mask) / rcut**2
+        eta = (eta * rho_local / rho_global)  # eta is different for each atom
     thetas_new += np.random.uniform(-eta / 2., eta / 2., len(thetas))
     return thetas_new
 
 
-def timestep(pos, thetas, rcut, eta, vel, L):
+def timestep(pos, thetas, rcut, eta, vel, L, mod):
     """Update position and angles of all particles.
     """
     # First update the positions:
@@ -109,11 +113,11 @@ def timestep(pos, thetas, rcut, eta, vel, L):
     pos[:, 1] = (pos[:, 1] + dy) % L  # Modulo L to handle PBCs
 
     # Now update the angles:
-    thetas = align(pos, thetas, eta, rcut, L)
+    thetas = align(pos, thetas, eta, rcut, L, mod)
     return pos, thetas
 
 
-def run(n, rho, eta, vel, rcut=None, nframes=100, nlog=10):
+def run(n, rho, eta, vel, rcut=None, nframes=100, nlog=10, mod=False):
     """Run a dynamics simulation.
 
     Parameters
@@ -132,6 +136,8 @@ def run(n, rho, eta, vel, rcut=None, nframes=100, nlog=10):
         Number of frames for which to run simulation.
     nlog : int
         Log positions and kinetic energy to trajectories every `nlog` frames.
+    mod : bool
+        If true, use local density noise modification.
     """
     pos, thetas, L = initialize(n, rho)
     if rcut > L / 2:
@@ -150,6 +156,6 @@ def run(n, rho, eta, vel, rcut=None, nframes=100, nlog=10):
         if i % nlog == 0:
             ptraj[i / nlog] = pos
             ttraj[i / nlog] = thetas
-        pos[:], thetas[:] = timestep(pos, thetas, rcut, eta, vel, L)
+        pos[:], thetas[:] = timestep(pos, thetas, rcut, eta, vel, L, mod)
 
     return ptraj, ttraj
