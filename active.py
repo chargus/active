@@ -3,7 +3,6 @@ A library of functions used to run Langevin dynamics for the Vicsek model.
 
 """
 
-import monad
 import numpy as np
 np.random.seed(0)
 
@@ -46,6 +45,27 @@ def avg_theta(thetas):
     return np.arctan2(np.mean(np.sin(thetas)), np.mean(np.cos(thetas)))
 
 
+def apply_pbc(pos, L):
+    """Apply periodic boundary conditions to an array of positions.
+
+    It is assumed that the simulation box exists on domain [-L/2, L/2]^D
+    where D is the number of dimensions.
+
+    Parameters
+    ----------
+    pos : numpy ndarray
+        Description
+    L : float
+        Description
+
+    Returns
+    -------
+    pos:
+        Description
+    """
+    return ((pos + L / 2) % L) - L / 2
+
+
 def get_neighbors(pos, rcut, L=1.0):
     """Find neighbors within cutoff distance, including across PBCs.
     (returns a mask)
@@ -54,8 +74,8 @@ def get_neighbors(pos, rcut, L=1.0):
     dy = np.subtract.outer(pos[:, 1], pos[:, 1])
 
     # Apply "minimum image" convention: interact with nearest periodic image
-    dx = monad.apply_pbc(dx, L)  # x component of i-j vector
-    dy = monad.apply_pbc(dy, L)  # y component of i-j vector
+    dx = apply_pbc(dx, L)  # x component of i-j vector
+    dy = apply_pbc(dy, L)  # y component of i-j vector
 
     r2 = dx**2 + dy**2  # Squared distance between all particle pairs
 
