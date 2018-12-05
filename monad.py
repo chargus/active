@@ -16,6 +16,7 @@ in-line comments.
 """
 
 import numpy as np
+import nve_basic
 
 
 def initialize_positions(n, L):
@@ -170,18 +171,24 @@ def velocity_verlet_timestep(pos, vel, dt, old_forces, L,
 
 
 def velocity_verlet_timestep2(pos, vel, dt, old_forces, L,
-                              sigma, epsilon, rcut):
+                              sigma, epsilon, rcut, get_t_and_p=False):
     """Second implementation of velocity verlet.
     """
     old_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
     pos = apply_pbc(pos + dt * vel + .5 * old_forces * dt**2, L)
-    new_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
+    if get_t_and_p:
+        new_forces, energy, T, p = get_forces(pos, L, sigma, epsilon,
+                                              rcut, vel)
+        res = (energy, T, p)
+    else:
+        new_forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
+        res = (energy,)
+
     vel = vel + 0.5 * dt * (old_forces + new_forces)
+    return (pos, vel, new_forces) + res
 
-    return pos, vel, new_forces, energy
 
-
-def get_forces(pos, L, sigma, epsilon, rcut):
+def get_forces(pos, L, sigma, epsilon, rcut, vel=None):
     """Compute Lennard-Jones force on each particle.
 
 
@@ -189,11 +196,20 @@ def get_forces(pos, L, sigma, epsilon, rcut):
     ----------
     pos : 2D numpy array [N x 3]
         Numpy array of particle positions.
+    vel : 2D numpy array [N x 3], optional
+        Numpy array of velocities. If provided, returned values include
+        temperature and pressure.
 
     Returns
     -------
     forces: 2D numpy array [N x 3]
         Numpy array of net force vector acting on each particle.
+    energy: float
+        Potential energy from LJ interaction.
+    temperature: float, optional
+        Instantaneous temperature of the system.
+    pressure: float, optional
+        Instantaneous pressure of the system.
 
     """
     # Determine particles within cutoff radius
@@ -226,21 +242,32 @@ def get_forces(pos, L, sigma, epsilon, rcut):
     net_fz = np.sum(fz, axis=0)
     forces = np.stack([net_fx, net_fy, net_fz], axis=1)
     energy = np.sum(lj_energy)
-    return forces, energy
+    if vel is not None:
+        temperature = np.sqrt(np.sum(vel**2) / (3 * len(vel)))
+        rho = len(pos) / L**3
+        # px = np.dot(fx.ravel(), dx.ravel())
+        # py = np.dot(fy.ravel(), dy.ravel())
+        # pz = np.dot(fz.ravel(), dz.ravel())
+        # pressure = rho * temperature + (1. / 6.) * (px + py + pz)
+        virial = np.dot(lj_force, r2[mask].ravel())
+        pressure = rho * temperature + virial / (6. * L**3)
+        return forces, energy, temperature, pressure
+    else:
+        return forces, energy
 
 
-def run(init_pos, init_vel, L, nframes, dt=0.005, nlog=10, rcut=None,
+def run(n, rho, T0, nframes, nframes_eq=50, dt=5e-3, nlog=10, rcut=None,
         sigma=1., epsilon=1., verbose=False):
     """Run a dynamics simulation.
 
     Parameters
     ----------
-    init_pos : 2D numpy array [N x 3]
-        Array of initial positions from which to start simulation.
-    init_vel : 2D numpy array [N x 3]
-        Array of initial velocities with which to start simulation.
-    L : float
-        Length of one side of the simulation box.
+    n : int
+        Number of particles
+    rho : float
+        Density
+    T0 : float
+        Initial temperature. May fluctuate and drift.
     nframes : int
         Number of frames to run simulation for
     dt : float
@@ -251,27 +278,45 @@ def run(init_pos, init_vel, L, nframes, dt=0.005, nlog=10, rcut=None,
         Cutoff radius beyond which interactions are not considered. Must be
         less than or equal to L/2.
     """
+
+    pos, L = nve_basic.fcc_positions(n, rho)
+    vel = initialize_velocities(n)
     if rcut > L / 2:
         raise ValueError("rcut must be less than or equal to L/2 to satisfy"
                          "the minimum image convention.")
     if rcut is None:
         rcut = L / 2.
 
+    # Equilibrate (don't keep any of this data):
+    for i in range(nframes_eq):
+        forces, ene = get_forces(pos, L, sigma, epsilon, rcut)
+        pos[:], vel[:], forces[:], ene = velocity_verlet_timestep2(
+            pos, vel, dt, forces, L, sigma, epsilon, rcut)
+
+    # Now set the temperature:
+    temp_factor = np.sqrt(np.sum(vel**2) / (3 * len(vel) * T0))
+    vel = vel / temp_factor  # Scale velocities to match desired temp
+
     # Initialize arrays:
-    pos = init_pos
-    vel = init_vel
-    forces, energy = get_forces(pos, L, sigma, epsilon, rcut)
+    forces, ene, T, p = get_forces(pos, L, sigma, epsilon, rcut, vel)
     ptraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
     vtraj = np.empty((nframes / nlog, pos.shape[0], pos.shape[1]))
     etraj = np.empty(nframes / nlog)
+    temptraj = np.empty(nframes / nlog)
+    prestraj = np.empty(nframes / nlog)
 
     # Begin iterating dynamics calculations:
     for i in range(nframes):
         if i % nlog == 0:
             ptraj[i / nlog] = pos
             vtraj[i / nlog] = vel
-            etraj[i / nlog] = energy
-        pos[:], vel[:], forces[:], energy = velocity_verlet_timestep2(
-            pos, vel, dt, forces, L, sigma, epsilon, rcut)
+            etraj[i / nlog] = ene
+            temptraj[i / nlog] = T
+            prestraj[i / nlog] = p
+            pos[:], vel[:], forces[:], ene, T, p = velocity_verlet_timestep2(
+                pos, vel, dt, forces, L, sigma, epsilon, rcut, True)
+        else:
+            pos[:], vel[:], forces[:], ene = velocity_verlet_timestep2(
+                pos, vel, dt, forces, L, sigma, epsilon, rcut)
 
-    return ptraj, vtraj, etraj
+    return ptraj, vtraj, etraj, temptraj, prestraj
