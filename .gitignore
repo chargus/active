@@ -10,3 +10,4 @@ f
 *.pdf
 *.synctex.gz
 doc/ising_model/
+*.png
